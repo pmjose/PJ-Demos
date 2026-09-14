@@ -3,3 +3,19 @@ __pycache__/
 .streamlit/secrets.toml
 # snow CLI deploy bundle
 output/
+
+# Generated catalog data, and a guard rather than a preference: access-codes.json holds
+# the codes that gate the live demos, and three of the repo detail files carry those same
+# codes inside captured upstream commit messages. This repo is public, so the directory
+# cannot be committed as it stands, and it was previously untracked only by luck — one
+# `git add -A` away from publishing all 51 of them.
+#
+# Rebuild it with the scripts in scripts/ rather than expecting git to restore it. Note
+# that `npm run refresh` opens by deleting the directory outright, so it is worth a copy
+# elsewhere before running that.
+data/
+
+# Screenshots, ~24MB across 269 files. Left out to keep the repo clone-able rather than
+# for any secrecy reason; regenerate with scripts/screenshot-pages.mjs and
+# scripts/screenshot-gallery.mjs.
+public/shots/
