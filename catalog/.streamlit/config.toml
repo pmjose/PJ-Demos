@@ -1,0 +1,9 @@
+[theme]
+base = "light"
+primaryColor = "#29B5E8"
+# Body text is near-black so headings and muted captions can differ; the navy is
+# reserved for links and accents. A navy textColor flattened the whole page.
+textColor = "#15202B"
+linkColor = "#11567F"
+secondaryBackgroundColor = "#F6F8FA"
+borderColor = "#E3E8EE"

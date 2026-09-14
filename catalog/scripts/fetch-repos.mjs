@@ -10,6 +10,20 @@ const OUT = path.join(process.cwd(), 'data');
 const REPOS_PER_PAGE = 10;
 const CONCURRENCY = 8;
 
+// Repos that exist on the account but are not demos, so never belong in the catalog.
+// Keep in sync with EXCLUDED in lib/data.js and streamlit_app.py.
+const EXCLUDED = new Set([
+  'PJ',
+  'xoople',
+  'TELCO-REVENUE',
+  'test',
+  'SnowImpact_backup',
+  'CMU-AI',
+  'snowflake',
+  'Snowtch',
+  'Flurry',
+]);
+
 function token() {
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
   try {
@@ -227,7 +241,14 @@ function shape(node, contributors) {
 
 async function main() {
   console.log('Fetching repositories...');
-  const { login, repos } = await fetchAllRepos();
+  const { login, repos: fetched } = await fetchAllRepos();
+
+  // Forks are other people's projects and EXCLUDED names are not demos. Dropping
+  // them here keeps them out of data/ entirely and saves the contributor calls below.
+  const repos = fetched.filter((r) => !r.isFork && !EXCLUDED.has(r.name));
+  if (repos.length !== fetched.length) {
+    console.log(`  excluded ${fetched.length - repos.length} forks and non-demos`);
+  }
 
   console.log(`Fetching contributors for ${repos.length} repos...`);
   const contributors = await mapLimit(repos, CONCURRENCY, (r) => fetchContributors(r.nameWithOwner));

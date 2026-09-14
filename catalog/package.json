@@ -1,20 +1,25 @@
 {
   "name": "catalog",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Data pipeline for the PROJECT_CATALOG Streamlit app deployed to Snowhouse",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "refresh": "node scripts/fetch-repos.mjs",
+    "add-demo": "node scripts/add-demo.mjs",
+    "shots": "node scripts/screenshot-pages.mjs",
+    "gallery": "node scripts/screenshot-gallery.mjs",
+    "facets": "node scripts/derive-facets.mjs",
+    "tech": "node scripts/derive-tech.mjs",
+    "codes": "node scripts/fetch-access-codes.mjs",
+    "search-terms": "node scripts/derive-search-terms.mjs",
+    "duplicates": "node scripts/derive-duplicates.mjs",
+    "load-demos": "node scripts/load-demos.mjs",
+    "deploy": "snow streamlit deploy --connection Snowhouse --replace"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "markdown-it": "^15.0.2",
-    "next": "^15.5.25",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "sanitize-html": "^2.17.7"
+  "type": "module",
+  "devDependencies": {
+    "playwright": "^1.63.0"
   }
 }

@@ -1,0 +1,39 @@
+definition_version: 2
+entities:
+  catalog:
+    type: streamlit
+    identifier:
+      name: PROJECT_CATALOG
+      # TEMP is the Snowhouse database for shared dashboards: SNOWHOUSE_BASIC_RL
+      # (every employee) already holds USAGE on it. The per-user schema follows the
+      # established TEMP.<USERNAME> convention and is owned by DASHBOARD_SHARING_RL,
+      # which is what lets us grant USAGE onward. A USER$ database cannot be shared.
+      database: TEMP
+      schema: PJOSE
+    runtime_name: SYSTEM$ST_CONTAINER_RUNTIME_PY3_11
+    compute_pool: STREAMLIT_DEDICATED_POOL_L
+    main_file: streamlit_app.py
+    # Display name in Snowsight's app list, which is account-wide and crowded —
+    # the app's own "Project catalog" heading is too generic to find there.
+    # Kept here as well as SET via ALTER so a --replace deploy doesn't reset it.
+    title: Telco & AI Demo Catalog · Pedro Jose
+    # No query_warehouse: the app reads its content from the staged files below
+    # and never issues SQL, so viewers need no warehouse grant.
+    # No pyproject.toml: only stdlib + streamlit are imported, so PyPI
+    # resolution — and therefore an external access integration — is not needed.
+    artifacts:
+      - streamlit_app.py
+      - .streamlit/config.toml
+      # The motion layer. If this is ever dropped from the bundle the app still works,
+      # but every animation silently disappears — structural styling is inline in the
+      # Python precisely so that failure is invisible rather than a broken layout.
+      - assets/app.css
+      # DejaVu Sans, used only by the PDF pack. Bundled rather than taken from the
+      # container image, which is not documented to carry any font: without it Pillow
+      # falls back to a bitmap face that ignores the requested size, and the pack comes
+      # out crude. Listed explicitly because artifacts names files, not the directory —
+      # dropping assets/app.css in here alongside it is what silently left the fonts
+      # out of the first deploy.
+      - assets/fonts/
+      - data/
+      - public/shots/

@@ -1,0 +1,861 @@
+/* Motion layer for the project catalog.
+ *
+ * Two tiers of selector live in here. Most rules target markup the app writes
+ * itself — .pc-* classes — and cannot break. Three effects (card lift, staggered
+ * entrance, scroll progress) have to reach for Streamlit's data-testid attributes,
+ * which are not a public API; each is written so that if a runtime upgrade renames
+ * one, the animation simply stops and nothing else is affected.
+ *
+ * Every :has(.pc-media) is doing real work: it restricts a rule to cards, so the
+ * bordered containers on the detail page are left alone.
+ */
+
+:root {
+  --pc-fast: 180ms;
+  --pc-mid: 220ms;
+  --pc-slow: 700ms;
+  --pc-ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --pc-lift: -2px;
+  --pc-zoom: 1.03;
+  --pc-stagger: 40ms;
+  --pc-shadow: 0 8px 24px rgba(21, 32, 43, 0.1);
+}
+
+/* ------------------------------------------------------------------ card media */
+
+/* The anchor owns the clipping, so the zoom is bounded by the card's own radius
+ * without touching any Streamlit container.
+ *
+ * Structural styling (aspect ratio, object-fit, radius, gradients) deliberately
+ * stays inline in the Python rather than moving here, so that a stylesheet which
+ * fails to reach Snowflake degrades to the previous static appearance instead of
+ * collapsing the layout.
+ */
+.pc-media {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  text-decoration: none;
+  /* Read by the scrim's inline opacity. Driving it through a custom property means
+   * the scrim is hidden by default even with no stylesheet at all, rather than
+   * leaving a stray call to action under every card. */
+  --pc-scrim-o: 0;
+  /* Paint containment: the zoom inside must not invalidate the page's layout. */
+  contain: paint;
+}
+
+.pc-shot {
+  transition: transform var(--pc-mid) var(--pc-ease);
+  /* Nudged off the compositor's fractional-pixel seam: without this the scaled
+   * image can show a hairline against the anchor's rounded corner. */
+  transform: translateZ(0);
+}
+
+.pc-media:hover .pc-shot,
+.pc-media:focus-visible .pc-shot {
+  transform: scale(var(--pc-zoom));
+}
+
+.pc-media:hover,
+.pc-media:focus-visible {
+  --pc-scrim-o: 1;
+}
+
+/* Hover preview: the card image is slot one, then each interior frame fades in over it
+ * for one slot of the cycle. Frames are stacked in DOM order, so a later frame simply
+ * covers an earlier one and only opacity has to be animated.
+ *
+ * The 25% windows below assume four slots — the card image plus CARD_FRAMES = 3 in
+ * streamlit_app.py, which also sets --pc-cycle and each frame's animation-delay. Change
+ * that constant and these percentages have to change with it.
+ *
+ * Animation is applied only on hover and focus, so a card at rest costs nothing: the
+ * frames are already in the DOM at opacity 0 and no compositing work happens until the
+ * pointer arrives. */
+@keyframes pc-frame-cycle {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  3%,
+  22% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 0;
+  }
+}
+
+.pc-media:hover .pc-frame,
+.pc-media:focus-visible .pc-frame {
+  animation: pc-frame-cycle var(--pc-cycle, 4800ms) linear infinite;
+}
+
+/* A preview that cycles on its own is exactly the kind of motion this opts out of, and
+ * on a touch screen there is no hover to end it — the first tap would start an
+ * animation that never stops. Both fall back to the static card. */
+@media (prefers-reduced-motion: reduce) {
+  .pc-media:hover .pc-frame,
+  .pc-media:focus-visible .pc-frame {
+    animation: none;
+  }
+}
+
+@media (hover: none) {
+  .pc-frame {
+    display: none;
+  }
+}
+
+/* Bottom-anchored scrim carrying the call to action. A span, not a div: markdown
+ * reparents block elements out of an inline anchor, which is what previously left
+ * most of the placeholder tiles unclickable. */
+.pc-scrim {
+  transform: translateY(4px);
+  transition: opacity var(--pc-fast) var(--pc-ease),
+    transform var(--pc-fast) var(--pc-ease);
+}
+
+.pc-media:hover .pc-scrim,
+.pc-media:focus-visible .pc-scrim {
+  transform: translateY(0);
+}
+
+.pc-cta {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #fff;
+  white-space: nowrap;
+}
+
+/* Keyboard parity: the hover treatment is also the focus treatment. */
+.pc-media:focus-visible {
+  outline: 2px solid #29b5e8;
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------- placeholder tiles */
+
+.pc-tile {
+  position: relative;
+  overflow: hidden;
+  text-decoration: none;
+  contain: paint;
+}
+
+/* Oversized wash drifting on transform rather than background-position. Page 3
+ * carries 16 of these at once, so the animation has to stay on the compositor;
+ * animating background-position would repaint all of them every frame. */
+.pc-wash {
+  animation: pc-drift 14s var(--pc-ease) infinite alternate;
+  will-change: transform;
+}
+
+@keyframes pc-drift {
+  from {
+    transform: translate3d(-4%, -3%, 0) scale(1.05);
+  }
+  to {
+    transform: translate3d(4%, 3%, 0) scale(1.12);
+  }
+}
+
+/* ---------------------------------------------------------------------- sidebar */
+
+/* The current-page chip, in the brand cyan rather than Streamlit's slate blue.
+ * Two tinted rounded rectangles 27px apart in different hues read as accidental, and
+ * the access panel below was both larger and more saturated than the only indicator
+ * of which page you are on — backwards, now that the nav is the sole route to the
+ * analytics. Tier B: if the hook is renamed the chip keeps Streamlit's own colour.
+ *
+ * The inset rule carries the state, not the tint. An 18% cyan fill is only 1.16:1
+ * against the sidebar, below the 3:1 WCAG asks of a non-text indicator, and cyan is
+ * too light to reach that at any usable alpha — navy does, at 7.6:1. Inset rather
+ * than a real border so switching pages shifts no text. */
+[data-testid="stSidebarNavLink"][aria-current="page"] {
+  background: rgba(41, 181, 232, 0.18);
+  box-shadow: inset 3px 0 0 #11567f;
+}
+
+/* Streamlit draws a rule under the nav, which was a third separating device on top of
+ * the panel's own border and the block gap. Removing it leaves about 30px between the
+ * two — more than the 16px rhythm used elsewhere, because the remaining 24px is
+ * Streamlit's own gap between sidebar elements and overriding that would change the
+ * spacing of everything below it. */
+[data-testid="stSidebarNavSeparator"] {
+  display: none;
+}
+
+/* Trims part of the empty band above the nav, which holds only the collapse control.
+ * Margin rather than height, so the control itself is never clipped. */
+[data-testid="stSidebarHeader"] {
+  margin-bottom: 0;
+}
+
+/* No width override here on purpose. Streamlit writes an inline width of 300px, so
+ * forcing 305px needed !important to win and bought five pixels — while taking that
+ * space off the main column, where it was enough to clip the filter labels. It also
+ * did not achieve what it was for: the legend rows still wrapped, which is a copy
+ * length problem rather than a width one. Leaving it native also keeps the sidebar
+ * drag-resizable.
+ */
+
+/* Group heading, above the block it names rather than inside it. Two of these split the
+ * panel into what you act on and what you only read, which is the distinction the flat
+ * expanders below rely on. */
+.pc-side-label {
+  margin: 0 0 0.4rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #11567f;
+}
+
+/* The second group needs air above it that the first does not: it follows a button
+ * rather than the nav, and at Streamlit's own block gap the label sat closer to the
+ * button it does not belong to than to the rows it heads.
+ *
+ * The negative bottom margin is not symmetry for its own sake. Streamlit's 16px block
+ * gap falls between this label and the first reference row, so the measured distance was
+ * 13.6px against the 6.4px binding the other label to its card — a label twice as far
+ * from what it heads reads as detached from it.
+ *
+ * Tuned against the row's visible text rather than its box. A flat row has no border at
+ * rest, so its own top padding insets the only part of it you can see; matching box to
+ * box still left the ink looking about twice as far from the label as the card's border
+ * is. Not pulled all the way to parity on purpose — the box has to stay clear of the
+ * label, or the hover tint renders over the word it sits under. */
+.pc-side-label-gap {
+  margin-top: 0.85rem;
+  margin-bottom: -0.2rem;
+}
+
+.pc-side-panel {
+  position: relative;
+  margin: 0 0 0.15rem;
+  padding: 0.7rem 0.85rem 0.75rem;
+  border: 1px solid #dcebf5;
+  border-radius: 10px;
+  /* Was a 0.16 cyan wash, which made a block of static prose the most saturated thing
+   * in the sidebar — heavier than the chip marking which page you are on. Halved, so
+   * the card still groups its two paragraphs without competing with the nav. */
+  background: linear-gradient(135deg, rgba(41, 181, 232, 0.08), rgba(255, 255, 255, 0) 82%),
+    #fff;
+}
+
+/* No left accent bar here, deliberately, though the hero band has one and this card used
+ * to match it. The nav chip 27px above carries a 3px left rule to mean "you are here",
+ * and repeating the device on the card immediately below it spent one signature on two
+ * unrelated ideas — current page and informational note — which made a static paragraph
+ * read as a selected state. The hero is in the far column where nothing competes with
+ * it; at this proximity the state meaning has to win, so the card keeps only its tint
+ * and border. */
+
+.pc-side-panel p {
+  margin: 0.4rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #3d4b5a;
+}
+
+.pc-side-panel .pc-side-note {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(21, 32, 43, 0.08);
+  font-size: 0.76rem;
+  color: #4e5b66;
+}
+
+.pc-side-panel a {
+  color: #11567f;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(17, 86, 127, 0.4);
+}
+
+/* Own markup rather than st.caption, which wraps its text in a container carrying
+ * opacity 0.6. That renders near-black as mid grey and dropped these links to 2.95:1
+ * — a real fail that a computed-colour check reports as passing. */
+.pc-side-foot {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #4e5b66;
+}
+
+.pc-side-foot a {
+  color: #11567f;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(17, 86, 127, 0.4);
+}
+
+.pc-side-foot a:hover {
+  text-decoration-color: currentColor;
+}
+
+/* Sidebar reference rows, flattened.
+ *
+ * These two are expanders, but Streamlit gives them a border and a white fill, so at
+ * full sidebar width they were indistinguishable from the two link buttons directly
+ * above — four bordered full-width controls, of which two opened a mail client and two
+ * merely disclosed text. Stripping the box leaves three readable weights in the panel:
+ * filled for the primary action, outlined for the secondary, flat for anything that
+ * only opens. The chevron Streamlit already draws carries the affordance.
+ *
+ * Scoped to the sidebar: expanders in the main column group real content and keep their
+ * box. Tier B — if the hook is renamed the rows simply keep Streamlit's border, which
+ * is the appearance being corrected rather than a broken one. */
+[data-testid="stSidebar"] [data-testid="stExpander"] details {
+  border: none;
+  background: transparent;
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+  /* 0.5rem across, not less: it has to equal the nav link's own 8px inner padding, or
+   * the row icons sit 2.4px left of the nav icons directly above them and the column
+   * reads as very slightly out of true. Vertically kept tight because this padding is
+   * what insets the row's visible text from its invisible box — see the label gap. */
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  color: #3d4b5a;
+}
+
+/* A resting flat row gives no hint it is interactive, so the tint stands in for the
+ * border that was removed. Keyboard focus is included because the two states should not
+ * disagree: without it, focus fell through to Streamlit's own grey-blue hover fill while
+ * the pointer got this cyan one. */
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover,
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:focus-visible {
+  background: rgba(41, 181, 232, 0.1);
+  color: #11567f;
+}
+
+/* Pulls the two rows into a list. Streamlit's block gap is sized for bordered cards and
+ * left them reading as two separate items rather than one reference group. */
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+  margin-top: -0.55rem;
+}
+
+/* The secondary action's default border is #e3e8ee, which against the sidebar's own grey
+ * ground is a luminance delta of about 19 — the button was surviving on its white fill
+ * rather than its edge, and at a glance read as a card. Darkened so the outlined weight
+ * is legible as a control, which is what separates it from the flat rows below.
+ *
+ * stBaseLinkButton, not stBaseButton: st.link_button renders an anchor with its own hook,
+ * and the stBaseButton-secondary spelling belongs to the real <button> behind View
+ * details and Save out in the grid. Targeting that one matched nothing at all in the
+ * sidebar and the rule silently did nothing. Both are listed because the two hooks are
+ * distinct spellings of the same intent and only one of them has to survive a rename. */
+[data-testid="stSidebar"] a[data-testid="stBaseLinkButton-secondary"],
+[data-testid="stSidebar"] a[data-testid="stBaseButton-secondary"] {
+  border-color: #c6d2de;
+}
+
+/* Streamlit lays the sidebar out as a flex column with a 16px row-gap, and a flex gap
+ * never collapses with a margin. It also puts margin-bottom: -16px on this rule's own
+ * container, which cancels that gap below the rule but not above it. So the margin here
+ * is asymmetric on purpose: the top value is added to a 16px gap that is still there,
+ * the bottom value replaces one that has been cancelled. Setting the two to similar
+ * numbers is what previously left 38px above the rule against 20px below it. */
+[data-testid="stSidebar"] hr {
+  margin: 0.5rem 0 1.5rem;
+}
+
+/* ------------------------------------------------------------------- hero band */
+
+/* The progress element draws nothing at rest, but it is a flex item in a column with a
+ * 16px gap and a zero-height flex item still spends its gap. It only became a separate
+ * item when the stylesheet moved into its own call, so this reclaims exactly the 16px
+ * that split introduced and no more.
+ *
+ * Deliberately not applied to the stylesheet's own container as well. The two together
+ * hold the hero at y=84, and Streamlit's header is absolutely positioned over the first
+ * 60px with an opaque background: collapsing both would seat the hero at 52 and let the
+ * header paint over its top edge, which is the same clipping the padding-top below is
+ * sized to avoid. One is dead space, both is a bug. Margin rather than a gap override,
+ * so nothing else in the column moves. */
+[data-testid="stElementContainer"]:has(> [data-testid="stHtml"] > .pc-progress) {
+  margin-bottom: -16px;
+}
+
+/* Streamlit reserves a deep top gutter in wide layout. The band supplies its own
+ * breathing room, so this reclaims roughly 50px of dead space above the fold.
+ * Two selectors because the block container's hook differs between versions; if
+ * neither matches, the only cost is the original gutter. */
+[data-testid="stMainBlockContainer"],
+section[data-testid="stMain"] .block-container {
+  /* Not smaller: Streamlit's own header is absolutely positioned over the first 60px
+   * with an opaque background, so anything tighter gets its top edge painted over —
+   * at 2.4rem it clipped the hero's rounded corners and the top of the accent bar. */
+  padding-top: 3.25rem;
+}
+
+.pc-hero {
+  position: relative;
+  overflow: hidden;
+  /* The band is a strong bordered object and the search field below it has similar
+   * visual weight; at Streamlit's default 16px gap the two read as one stack rather
+   * than as identity followed by tools. */
+  margin-bottom: 1.6rem;
+  padding: 1.5rem 1.6rem 1.3rem;
+  border: 1px solid #cfe4f2;
+  border-radius: 14px;
+  /* The wash cannot reach the bottom right corner: with a 130% by 150% ellipse that
+   * corner sits at normalised radius 1.018, outside the shape whatever the end stop.
+   * Enlarging the ellipse would fix it but darkens the whole band, and the stat labels
+   * sit at 5.2:1 already — so the border carries the silhouette there instead. */
+  background: radial-gradient(
+      130% 150% at 0% 0%,
+      rgba(41, 181, 232, 0.3),
+      rgba(41, 181, 232, 0) 100%
+    ),
+    linear-gradient(135deg, rgba(17, 86, 127, 0.1), rgba(255, 255, 255, 0) 78%), #fff;
+  animation: pc-fade-in 320ms var(--pc-ease) both;
+}
+
+/* Brand accent holding the left edge. */
+.pc-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, #29b5e8, #11567f);
+}
+
+/* Descendant selectors throughout: Streamlit styles headings and paragraphs with
+ * its own class-plus-element rules, which outrank a bare class of ours. */
+.pc-hero .pc-hero-title {
+  margin: 0;
+  padding: 0;
+  /* Scales with the viewport so a longer title cannot run to three lines on a narrow
+   * window, which a fixed size allowed. */
+  font-size: clamp(1.5rem, 1.05rem + 1.7vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+  color: #15202b;
+}
+
+.pc-hero .pc-hero-sub {
+  /* Was 7.2px against 16.8 and 28.8 below it, which glued the tagline to the title
+   * instead of letting it read as its own tier. */
+  margin: 0.62rem 0 0;
+  /* Held to a comfortable measure; full-bleed at this width is unreadable. Balanced
+   * so the second line cannot end in a one-word orphan. */
+  max-width: 70ch;
+  text-wrap: balance;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #46586b;
+}
+
+/* One bordered panel with hairline dividers, not four separate boxes.
+ *
+ * Spreading individual tiles across the band fixed the empty right half but moved the
+ * emptiness inside them — ink filled under 30% of each tile, so every one read as a
+ * container waiting for content. Making the panel the visual unit removes that reading
+ * entirely: the row is obviously full, and the dividers do the grouping work the
+ * borders were failing to do.
+ *
+ * Explicit column counts rather than auto-fit, which had a 525-680px window where the
+ * fourth tile orphaned onto its own row. */
+.pc-hero .pc-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 1.15rem;
+  border: 1px solid #e3e8ee;
+  border-radius: 10px;
+  /* Translucent so the band's tint shows through and the panel reads as part of it. */
+  background: rgba(255, 255, 255, 0.8);
+  overflow: hidden;
+}
+
+.pc-hero .pc-stat {
+  padding: 0.7rem 0.9rem 0.75rem;
+  /* Centred, not left aligned. The bays are far wider than a two-digit number and a
+   * short label need, so left alignment left a dead right half in each one and the
+   * panel read as stretched. Centring makes the width look chosen. */
+  text-align: center;
+}
+
+.pc-hero .pc-stat + .pc-stat {
+  border-left: 1px solid #e3e8ee;
+}
+
+@media (max-width: 680px) {
+  .pc-hero .pc-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Third tile starts the second row, so it takes a top rule and loses its left one. */
+  .pc-hero .pc-stat:nth-child(3) {
+    border-left: none;
+  }
+
+  .pc-hero .pc-stat:nth-child(n + 3) {
+    border-top: 1px solid #e3e8ee;
+  }
+}
+
+.pc-hero .pc-stat-n {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #11567f;
+  font-variant-numeric: tabular-nums;
+}
+
+.pc-hero .pc-stat-l {
+  display: block;
+  margin-top: 0.05rem;
+  font-size: 0.67rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #5b6b7c;
+}
+
+.pc-hero .pc-hero-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.85rem;
+  align-items: baseline;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(21, 32, 43, 0.08);
+  font-size: 0.8rem;
+  /* Darker than the captions elsewhere because this is the one text layer sitting
+   * directly on the tinted band with no white panel under it. At #5B6B7C it measured
+   * 4.49:1 against the wash — a fail, not the marginal pass it looked like. */
+  color: #4e5b66;
+}
+
+.pc-hero .pc-hero-foot a {
+  color: #11567f;
+  /* Underlined at rest, not only on hover: against the footer's own grey the link
+   * differs by 1.44:1 on colour alone, so colour cannot be the only cue. */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(17, 86, 127, 0.4);
+}
+
+.pc-hero .pc-hero-foot a:hover {
+  text-decoration-color: currentColor;
+}
+
+/* ------------------------------------------------------------------- spotlight */
+
+.pc-spot {
+  position: relative;
+  overflow: hidden;
+  text-decoration: none;
+  contain: paint;
+}
+
+.pc-spot-shot {
+  transition: transform var(--pc-slow) var(--pc-ease);
+  transform: translateZ(0);
+}
+
+.pc-spot:hover .pc-spot-shot {
+  transform: scale(1.02);
+}
+
+/* Slow sheen crossing the image. Defined entirely here, including its geometry, so
+ * that without this stylesheet the span is empty and invisible rather than a static
+ * white stripe sitting across the artwork. Transform-only, so it composites. */
+.pc-sheen {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: block;
+  width: 40%;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.22) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: pc-sweep 7s var(--pc-ease) infinite;
+}
+
+@keyframes pc-sweep {
+  /* Idle for most of the cycle: a sheen that never rests reads as a loading state. */
+  0%,
+  55% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+/* ----------------------------------------------------------------- usage page */
+
+/* Only the draw-on lives here. Stroke and fill are presentation attributes on the
+ * SVG itself, so a missing stylesheet leaves a static line rather than an unstyled
+ * black shape. */
+.pc-spark-line {
+  /* Overshoots any real path length, so one value works for every series. */
+  stroke-dasharray: 4000;
+  stroke-dashoffset: 4000;
+  animation: pc-draw 900ms var(--pc-ease) forwards;
+}
+
+.pc-spark-fill {
+  opacity: 0;
+  animation: pc-fade 500ms var(--pc-ease) 500ms forwards;
+}
+
+@keyframes pc-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes pc-fade {
+  to {
+    opacity: 1;
+  }
+}
+
+.pc-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.2rem 0 0.4rem;
+}
+
+.pc-bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 11rem) 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+}
+
+.pc-bar-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pc-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #eef2f6;
+  overflow: hidden;
+}
+
+.pc-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #29b5e8, #11567f);
+  /* --w and --d are set per row inline; the row index drives the stagger. */
+  animation: pc-grow var(--pc-slow) var(--pc-ease) var(--d, 0ms) forwards;
+}
+
+.pc-bar-count {
+  font-variant-numeric: tabular-nums;
+  color: #5b6b7c;
+}
+
+@keyframes pc-grow {
+  to {
+    width: var(--w, 0%);
+  }
+}
+
+/* ------------------------------------------------------- entrance and lift (B) */
+
+/* Tier B — the only rules that reach for Streamlit's own attributes.
+ *
+ * Keyed on .pc-card-face, which both the screenshot anchor and the placeholder tile
+ * carry, so a card behaves the same whether or not it has a screenshot. Keying on
+ * .pc-media alone silently excluded every placeholder — two thirds of page 3.
+ *
+ * Two selectors because the testid for a bordered container was renamed: older builds
+ * expose stVerticalBlockBorderWrapper, this one puts the border on stVerticalBlock.
+ * Listing both keeps the effect working either way.
+ *
+ * The :not(:has(...)) clause is load-bearing. Several nested vertical blocks contain
+ * the face, and styling all of them would stack transforms and shadows on top of each
+ * other. This narrows the match to the innermost qualifying block — the card itself —
+ * by excluding any block that contains another block containing a face. Verified as
+ * exactly one match per card, with no match nested inside another. */
+[data-testid="stVerticalBlockBorderWrapper"]:has(.pc-card-face):not(
+    :has([data-testid="stVerticalBlockBorderWrapper"] .pc-card-face)
+  ),
+[data-testid="stVerticalBlock"]:has(.pc-card-face):not(
+    :has([data-testid="stVerticalBlock"] .pc-card-face)
+  ) {
+  transition: transform var(--pc-fast) var(--pc-ease),
+    box-shadow var(--pc-fast) var(--pc-ease),
+    border-color var(--pc-fast) var(--pc-ease);
+}
+
+[data-testid="stVerticalBlockBorderWrapper"]:has(.pc-card-face):not(
+    :has([data-testid="stVerticalBlockBorderWrapper"] .pc-card-face)
+  ):hover,
+[data-testid="stVerticalBlock"]:has(.pc-card-face):not(
+    :has([data-testid="stVerticalBlock"] .pc-card-face)
+  ):hover {
+  transform: translateY(var(--pc-lift));
+  box-shadow: var(--pc-shadow);
+  border-color: #cbd5e1;
+}
+
+/* Opacity only, and short. Streamlit remounts these columns on some reruns, so the
+ * entrance can replay after an interaction that has nothing to do with the grid. An
+ * ordinary Save click reuses the nodes and does not replay, but a structural change
+ * such as clearing the shortlist does. A 6px rise replaying then reads as a glitch;
+ * a brief fade is unobtrusive at any frequency while still doing its job on a genuine
+ * page or filter change. */
+[data-testid="stColumn"]:has(.pc-card-face) {
+  animation: pc-enter 150ms var(--pc-ease) both;
+}
+
+[data-testid="stColumn"]:nth-child(2):has(.pc-card-face) {
+  animation-delay: var(--pc-stagger);
+}
+
+[data-testid="stColumn"]:nth-child(3):has(.pc-card-face) {
+  animation-delay: calc(var(--pc-stagger) * 2);
+}
+
+@keyframes pc-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Metric row on the usage page, same idea across five tiles. */
+[data-testid="stMetric"] {
+  animation: pc-enter var(--pc-mid) var(--pc-ease) both;
+}
+
+[data-testid="stMetric"]:nth-child(2) { animation-delay: 50ms; }
+[data-testid="stMetric"]:nth-child(3) { animation-delay: 100ms; }
+[data-testid="stMetric"]:nth-child(4) { animation-delay: 150ms; }
+[data-testid="stMetric"]:nth-child(5) { animation-delay: 200ms; }
+
+/* Detail view entrance. Arriving here is a full document load when it comes from
+ * an image click, so a fade on the way in stands in for a view transition.
+ *
+ * The marker span carries no animation itself — it only tells the stylesheet which
+ * page is rendered, since Streamlit gives the page container no class of its own.
+ * Opacity only: a transform on the scroll container risks a scrollbar flash. */
+.pc-detail-in {
+  display: none;
+}
+
+section[data-testid="stMain"]:has(.pc-detail-in) {
+  animation: pc-fade-in 260ms var(--pc-ease) both;
+}
+
+@keyframes pc-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------- scroll progress (B) */
+
+/* Guarded: without scroll-driven animation support the bar would sit frozen at
+ * full width, which is worse than not having it, so it is only created at all
+ * where the timeline works.
+ *
+ * A named timeline rather than scroll(nearest): the page scrolls inside Streamlit's
+ * main section, not the document, and a position:fixed bar has no scrolling ancestor
+ * to resolve "nearest" against. timeline-scope on the body hoists the section's
+ * timeline so the fixed bar can reference it. */
+@supports (animation-timeline: scroll()) and (timeline-scope: --pc-scroll) {
+  body {
+    timeline-scope: --pc-scroll;
+  }
+
+  section[data-testid="stMain"] {
+    scroll-timeline-name: --pc-scroll;
+    scroll-timeline-axis: block;
+  }
+
+  .pc-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 999;
+    height: 2px;
+    width: 100%;
+    transform-origin: 0 50%;
+    background: linear-gradient(90deg, #29b5e8, #11567f);
+    scale: 0 1;
+    animation: pc-progress linear;
+    animation-timeline: --pc-scroll;
+  }
+
+  @keyframes pc-progress {
+    to {
+      scale: 1 1;
+    }
+  }
+}
+
+/* ------------------------------------------------------------- reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Entrances collapse to nothing rather than being removed, so the end state
+   * (opacity 1) still applies and no element is left invisible. */
+  .pc-shot,
+  .pc-spot-shot,
+  .pc-scrim,
+  [data-testid="stVerticalBlockBorderWrapper"]:has(.pc-card-face),
+  [data-testid="stVerticalBlock"]:has(.pc-card-face) {
+    transition-duration: 0.01ms !important;
+  }
+
+  .pc-spark-line,
+  .pc-spark-fill,
+  .pc-bar-fill,
+  [data-testid="stColumn"]:has(.pc-card-face),
+  [data-testid="stMetric"],
+  section[data-testid="stMain"]:has(.pc-detail-in) {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+  }
+
+  /* Anything that never stops is dropped outright: a permanent loop is the
+   * least acceptable of these effects for anyone motion-sensitive. */
+  .pc-wash,
+  .pc-sheen {
+    animation: none !important;
+  }
+
+  .pc-sheen {
+    display: none;
+  }
+
+  /* Movement removed, the affordance kept. */
+  [data-testid="stVerticalBlockBorderWrapper"]:has(.pc-card-face):hover,
+  [data-testid="stVerticalBlock"]:has(.pc-card-face):hover {
+    transform: none;
+  }
+
+  .pc-media:hover .pc-shot,
+  .pc-media:focus-visible .pc-shot {
+    transform: translateZ(0);
+  }
+}
